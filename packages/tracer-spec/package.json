@@ -1,0 +1,26 @@
+{
+  "name": "@golf-tracer/tracer-spec",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tracer JSON spec v1: schema, math and canvas renderer (TypeScript). DOM-free so React Native can use it.",
+  "type": "module",
+  "main": "./ts/src/index.ts",
+  "types": "./ts/src/index.ts",
+  "exports": {
+    ".": "./ts/src/index.ts",
+    "./schema.json": "./schema/tracer.schema.json",
+    "./vectors.json": "./vectors/vectors.json"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint ts",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.13.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vitest": "5.0.5"
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://golf-tracer.local/schemas/tracer.v1.json",
+  "title": "Tracer",
+  "description": "Ball-flight tracer document, schema version 1. Coordinates are normalized to the normalized video's displayed frame (origin top-left, y down). Times are seconds on the normalized video's timeline. Cross-field rules (time ordering, shared apex y) are enforced by validateTracer in both implementations.",
+  "type": "object",
+  "required": ["schema_version", "video", "impact_time_s", "apex_time_s", "landing_time_s", "path", "timing", "style"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "video": {
+      "type": "object",
+      "required": ["width", "height", "fps", "duration_s"],
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "fps": { "type": "number", "exclusiveMinimum": 0 },
+        "duration_s": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "impact_time_s": { "type": "number", "minimum": 0 },
+    "apex_time_s": { "type": "number", "minimum": 0 },
+    "landing_time_s": { "type": "number", "minimum": 0 },
+    "path": {
+      "type": "object",
+      "required": ["start", "c1", "apex", "c2", "landing"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "$ref": "#/$defs/point" },
+        "c1": { "$ref": "#/$defs/point" },
+        "apex": { "$ref": "#/$defs/point" },
+        "c2": { "$ref": "#/$defs/point" },
+        "landing": { "$ref": "#/$defs/point" }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "required": ["ascent_ease", "descent_ease"],
+      "additionalProperties": false,
+      "properties": {
+        "ascent_ease": { "type": "number", "minimum": 0.1, "maximum": 20 },
+        "descent_ease": { "type": "number", "minimum": 0.1, "maximum": 20 }
+      }
+    },
+    "style": { "$ref": "#/$defs/style" },
+    "observed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["t", "x", "y"],
+        "properties": {
+          "t": { "type": "number" },
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "score": { "type": "number" }
+        }
+      }
+    },
+    "fit": {
+      "type": "object",
+      "properties": {
+        "method": { "type": "string" },
+        "residual_px": { "type": ["number", "null"] },
+        "confidence": { "type": ["number", "null"] }
+      }
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number", "minimum": 0, "maximum": 1 },
+        { "type": "number", "minimum": 0, "maximum": 1 }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "style": {
+      "type": "object",
+      "required": ["color", "width", "taper", "glow", "persist_s"],
+      "additionalProperties": false,
+      "properties": {
+        "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 0.05 },
+        "taper": { "type": "number", "minimum": 0, "maximum": 1 },
+        "glow": { "type": "number", "minimum": 0, "maximum": 1 },
+        "persist_s": { "type": ["number", "null"], "minimum": 0 }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+[project]
+name = "tracer-worker"
+version = "0.1.0"
+description = "Golf Tracer job worker (process, retrace, render)"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "tracer-core",
+    "tracer-spec",
+]
+
+[project.scripts]
+tracer-worker = "tracer_worker.main:main"
+
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tracer_worker"]

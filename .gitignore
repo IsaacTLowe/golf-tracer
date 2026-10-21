@@ -1,0 +1,29 @@
+# Dependencies and builds
+node_modules/
+.venv/
+.next/
+dist/
+build/
+*.tsbuildinfo
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Env and secrets
+.env
+.env.*.local
+supabase/signing_keys.json
+
+# Local data
+datasets/golden/.cache/
+.supabase-lite/
+test-results/
+playwright-report/
+apps/web/e2e/.fixtures/
+.expo/
+.expo-export-check/
+*.mp4
+*.mov
+sample-clips/

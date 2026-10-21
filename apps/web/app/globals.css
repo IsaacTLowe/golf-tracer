@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f5f7f4;
+  --foreground: #10170f;
+  --surface: #ffffff;
+  --muted: #5b6659;
+  --border: #dde3db;
+  --accent: #127a3e;
+  --accent-fg: #ffffff;
+  --danger: #c4302b;
+  --warning: #b7791f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0b110c;
+    --foreground: #e8eee6;
+    --surface: #141c15;
+    --muted: #93a191;
+    --border: #253026;
+    --accent: #2fb866;
+    --accent-fg: #06110a;
+    --danger: #ef5b55;
+    --warning: #e0a53a;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Touch targets: every interactive control is at least 44 px. */
+@utility tap {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+@utility btn {
+  @apply tap inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-medium transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply tap inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-danger {
+  @apply tap inline-flex items-center justify-center gap-2 rounded-lg border border-danger px-4 text-sm font-medium text-danger transition-colors hover:bg-danger hover:text-white disabled:opacity-50;
+}
+
+@utility input {
+  @apply tap w-full rounded-lg border border-border bg-surface px-3 text-base outline-none focus:border-accent;
+}
+
+@utility card {
+  @apply rounded-xl border border-border bg-surface;
+}

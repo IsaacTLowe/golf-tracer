@@ -1,0 +1,16 @@
+{
+  // "DOM" is here only for the Fetch API types (fetch/Request/Response), which React Native
+  // also provides. The client must not use window, document or other browser-only APIs.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "types": [],
+    "strict": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["src", "test"]
+}

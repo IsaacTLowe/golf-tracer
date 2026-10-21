@@ -1,0 +1,16 @@
+**/node_modules
+**/.next
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+.git
+datasets/golden/.cache
+supabase/.temp
+supabase/.branches
+**/*.mp4
+**/*.mov
+test-results
+playwright-report
+.env

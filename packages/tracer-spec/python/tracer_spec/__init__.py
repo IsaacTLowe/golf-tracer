@@ -1,0 +1,45 @@
+"""Tracer spec v1 (Python implementation). See packages/tracer-spec/README.md."""
+
+from .schema import load_schema, validate, validate_schema
+from .spec import (
+    DEFAULT_STYLE,
+    DEFAULT_TIMING,
+    FADE_S,
+    GLOW_BLUR_FACTOR,
+    GLOW_OPACITY,
+    GLOW_WIDTH_FACTOR,
+    SAMPLES_PER_SEGMENT,
+    SCHEMA_VERSION,
+    FramePlan,
+    bezier,
+    fade_alpha,
+    frame_plan,
+    head_at,
+    head_param,
+    sample_path,
+    validate_tracer,
+    width_at,
+)
+
+__all__ = [
+    "DEFAULT_STYLE",
+    "DEFAULT_TIMING",
+    "FADE_S",
+    "GLOW_BLUR_FACTOR",
+    "GLOW_OPACITY",
+    "GLOW_WIDTH_FACTOR",
+    "SAMPLES_PER_SEGMENT",
+    "SCHEMA_VERSION",
+    "FramePlan",
+    "bezier",
+    "fade_alpha",
+    "frame_plan",
+    "head_at",
+    "head_param",
+    "load_schema",
+    "sample_path",
+    "validate",
+    "validate_schema",
+    "validate_tracer",
+    "width_at",
+]

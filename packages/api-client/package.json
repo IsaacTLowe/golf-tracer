@@ -1,0 +1,25 @@
+{
+  "name": "@golf-tracer/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Typed client for the Golf Tracer API, generated from its OpenAPI schema. DOM-free (works in React Native).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "openapi-typescript openapi.json -o src/schema.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "6.0.3",
+    "vitest": "5.0.5"
+  }
+}

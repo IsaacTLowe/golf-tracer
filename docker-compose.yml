@@ -1,0 +1,60 @@
+# Web, API and worker. Supabase (Postgres, Auth, Storage, Realtime) runs separately via the
+# Supabase CLI, which manages its own containers: `pnpm supabase:start` (see README).
+name: golf-tracer
+
+x-backend-env: &backend-env
+  # Containers reach the CLI's Supabase through the host.
+  SUPABASE_URL: ${SUPABASE_INTERNAL_URL:-http://host.docker.internal:54321}
+  # What browsers use (signed URLs and the TUS endpoint handed to clients).
+  SUPABASE_PUBLIC_URL: ${SUPABASE_URL:-http://127.0.0.1:54321}
+  SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?run `pnpm supabase:env` to write .env}
+  SUPABASE_JWT_AUDIENCE: ${SUPABASE_JWT_AUDIENCE:-authenticated}
+  SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+  DATABASE_URL: ${DATABASE_INTERNAL_URL:-postgresql://postgres:postgres@host.docker.internal:54322/postgres}
+  TRACE_DEBUG: ${TRACE_DEBUG:-0}
+  WATERMARK: ${WATERMARK:-0}
+  APP_NAME: ${APP_NAME:-Golf Tracer}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    environment:
+      <<: *backend-env
+      CORS_ORIGINS: '["${WEB_ORIGIN:-http://localhost:3000}", "http://127.0.0.1:3000"]'
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+    environment:
+      <<: *backend-env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    # Scale with: docker compose up --scale worker=3
+    deploy:
+      replicas: ${WORKER_REPLICAS:-1}
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL:-http://127.0.0.1:54321}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?run `pnpm supabase:env` to write .env}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      APP_NAME: ${APP_NAME:-Golf Tracer}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
