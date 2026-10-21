@@ -93,7 +93,8 @@ Choices made where the spec was silent, plus the open-question defaults. Newest 
   - **Fitting:** least squares on pixel residuals with weak priors, then the spec's curve and eases are fitted to the projected trajectory.
   - **Selection:** used when its residual is ≤ max(6 px, 2 × the image fit's residual); otherwise image_v1 is kept.
 - **No learned detector:** evaluation hasn't shown that classical tracking has plateaued (synthetic recall is limited by the ball getting sub-pixel, not by the detector). Revisit with real golden clips.
-- **`auto_trace(version="v1")`** reproduces the milestone 4 pipeline for comparisons. The recorded baseline (`datasets/golden/baseline_synthetic.json`) was produced with v1.
+- **`auto_trace(version="v1")`** reproduces the milestone 4 pipeline for comparisons. `datasets/golden/baseline_synthetic_m4.json` holds the v1 numbers; CI gates on `baseline_synthetic.json`, recorded with the current pipeline (re-record it when an improvement lands).
+- **Calibration metric:** a clip counts as "good" when the ball was found, impact is within 2 frames and the tracer's landing is within 0.06 of frame height. Judging by track recall instead marked accurate short tracks as failures.
 
 ## Rendering
 
