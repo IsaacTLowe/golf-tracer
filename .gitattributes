@@ -2,3 +2,9 @@
 *.png binary
 *.jpg binary
 *.mp4 binary
+
+# Generated: collapsed in diffs, excluded from language stats
+packages/api-client/src/schema.ts linguist-generated=true
+packages/tracer-spec/vectors/vectors.json linguist-generated=true
+pnpm-lock.yaml linguist-generated=true
+uv.lock linguist-generated=true

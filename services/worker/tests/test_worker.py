@@ -70,7 +70,7 @@ def test_process_manual_trace_approve_render(
     assert detail["detection"]["impact_time_s"] == pytest.approx(labels["impact_time_s"], abs=2.5 / 60)
     if detail["status"] == "review":
         assert detail["tracer"]["source"] == "auto"
-        assert detail["tracer"]["data"]["fit"]["method"] == "image_v1"
+        assert detail["tracer"]["data"]["fit"]["method"] in ("image_v1", "physics_v1")
 
     # Manual tracer from the wizard's three taps, approve, export.
     a = labels["address"]

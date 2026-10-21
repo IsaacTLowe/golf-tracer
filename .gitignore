@@ -1,29 +1,58 @@
-# Dependencies and builds
+# Dependencies and build output
 node_modules/
 .venv/
 .next/
+out/
 dist/
 build/
 *.tsbuildinfo
+next-env.d.ts
 __pycache__/
 *.pyc
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
-# Env and secrets
+# Expo / React Native
+.expo/
+web-build/
+expo-env.d.ts
+apps/mobile/ios/
+apps/mobile/android/
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+
+# Secrets and local env
 .env
-.env.*.local
+.env.*
+!.env.example
+*.pem
+*.key
 supabase/signing_keys.json
 
-# Local data
+# Supabase CLI state
+supabase/.branches/
+supabase/.temp/
+
+# Generated
+packages/api-client/openapi.json
+AGENTS.md
+
+# Local data and test output
 datasets/golden/.cache/
 .supabase-lite/
+sample-clips/
 test-results/
 playwright-report/
 apps/web/e2e/.fixtures/
-.expo/
 .expo-export-check/
 *.mp4
 *.mov
-sample-clips/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.log

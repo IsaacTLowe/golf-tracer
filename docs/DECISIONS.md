@@ -93,7 +93,17 @@ Choices made where the spec was silent, plus the open-question defaults. Newest 
   - **Fitting:** least squares on pixel residuals with weak priors, then the spec's curve and eases are fitted to the projected trajectory.
   - **Selection:** used when its residual is ≤ max(6 px, 2 × the image fit's residual); otherwise image_v1 is kept.
 - **No learned detector:** evaluation hasn't shown that classical tracking has plateaued (synthetic recall is limited by the ball getting sub-pixel, not by the detector). Revisit with real golden clips.
-- **`auto_trace(version="v1")`** reproduces the milestone 4 pipeline for comparisons. `datasets/golden/baseline_synthetic_m4.json` holds the v1 numbers; CI gates on `baseline_synthetic.json`, recorded with the current pipeline (re-record it when an improvement lands).
+- **`auto_trace(version="v1")`** reproduces the milestone 4 pipeline for comparisons. CI gates on `datasets/golden/baseline_synthetic.json`, recorded with the current pipeline; re-record it when an improvement lands. Milestone 4 (v1) vs milestone 6 (v2) on the synthetic set:
+
+  | Metric | v1 | v2 |
+  | --- | --- | --- |
+  | Address detection | 1.00 | 1.00 |
+  | Impact within 2 frames | 1.00 | 1.00 |
+  | Track recall | 0.46 | 0.51 |
+  | Track error (px) | 119.9 | 5.6 |
+  | Landing error (frame height) | 0.167 | 0.038 |
+  | Confidence separation | 0.16 | 0.13 |
+  | Routed to review | 1.00 | 1.00 |
 - **Calibration metric:** a clip counts as "good" when the ball was found, impact is within 2 frames and the tracer's landing is within 0.06 of frame height. Judging by track recall instead marked accurate short tracks as failures.
 
 ## Rendering
