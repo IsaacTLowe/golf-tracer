@@ -29,8 +29,8 @@ jobs:
     env:
       TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -45,15 +45,15 @@ jobs:
     name: TypeScript (eslint, tsc, vitest, API client drift)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v10
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -73,15 +73,15 @@ jobs:
     name: Render parity (Python vs canvas)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v10
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -99,20 +99,20 @@ jobs:
     env:
       GOLDEN_BUCKET: ${{ secrets.GOLDEN_BUCKET }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: uv sync --frozen
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: datasets/golden/.cache
           key: golden-synth-${{ hashFiles('python/tracer_core/tracer_core/synth.py') }}
       - name: Synthetic set (regression gate)
         run: uv run python -m tracer_core.eval --set synthetic --baseline datasets/golden/baseline_synthetic.json --report eval-report.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: eval-report
@@ -130,15 +130,15 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [python, typescript]
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v10
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -157,7 +157,7 @@ jobs:
       - name: Service logs
         if: failure()
         run: docker compose logs --no-color
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report

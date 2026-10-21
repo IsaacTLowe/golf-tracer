@@ -1,17 +1,17 @@
 {
   "set": "synthetic",
-  "pipeline": "v1",
+  "pipeline": "v2",
   "metrics": {
     "clips": 10.0,
     "address_detection_rate": 1.0,
     "impact_within_2_frames": 1.0,
     "impact_error_frames": 0.8,
-    "track_recall": 0.4584795321637427,
-    "track_error_px": 119.89381884553168,
-    "landing_error": 0.16713370330399863,
-    "confidence_separation": 0.24919999999999987,
+    "track_recall": 0.5076023391812865,
+    "track_error_px": 5.565013766559995,
+    "landing_error": 0.03803114412818168,
+    "confidence_separation": 0.13124999999999998,
     "review_rate": 1.0,
-    "check_rate": 0.3,
+    "check_rate": 0.2,
     "needs_input_rate": 0.0
   },
   "tolerance": {

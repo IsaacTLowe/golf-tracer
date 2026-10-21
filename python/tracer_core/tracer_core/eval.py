@@ -29,6 +29,8 @@ from .pipeline import auto_trace
 REPO = Path(__file__).resolve().parents[3]
 GOLDEN = REPO / "datasets" / "golden"
 
+GOOD_LANDING_ERROR = 0.06  # fraction of frame height
+
 # metric -> (direction, default absolute tolerance)
 METRICS: dict[str, tuple[str, float]] = {
     "address_detection_rate": ("higher", 0.05),
@@ -71,10 +73,12 @@ def evaluate_clip(video: Path, labels: dict[str, Any], pipeline: str = "v2") -> 
     if r.tracer is not None and landing:
         lx, ly = r.tracer["path"]["landing"]
         out["landing_error"] = math.hypot((lx - landing["x"]) * W, (ly - landing["y"]) * H) / H
+    # "Good" judges the result the user gets (the tracer), not how much of the flight was
+    # tracked: a short but accurate track that yields a correct tracer is a good clip.
     out["good"] = bool(
         out.get("address_ok")
         and out.get("impact_error_frames", 99) <= 2
-        and (out["track_matched"] / max(out["track_labelled"], 1)) >= 0.5
+        and out.get("landing_error", 1.0) <= GOOD_LANDING_ERROR
     )
     return out
 

@@ -208,4 +208,3 @@ def test_maintenance_removes_abandoned_uploads_and_old_originals(
     assert str(fresh["id"]) in ids
     assert ids[str(approved["id"])] is None
     assert not (local_storage.root / "raw" / user["id"] / "x" / "original.mp4").exists()
-
