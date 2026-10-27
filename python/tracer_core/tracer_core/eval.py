@@ -2,7 +2,8 @@
 
 Runs the auto-tracing pipeline over a labelled clip set and reports the metrics from the
 spec (address detection, impact error, track recall/error, landing error, confidence
-calibration, route rate). With ``--baseline`` it fails (exit 1) when any metric regresses
+calibration, route rate), plus tracer error: how far the drawn tracer head is from the ball
+while it is visible. With ``--baseline`` it fails (exit 1) when any metric regresses
 beyond the baseline's tolerance; ``--record`` writes the current numbers as the baseline.
 
 Sets:
@@ -23,6 +24,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from tracer_spec.spec import head_at
+
 from . import media, synth
 from .pipeline import auto_trace
 
@@ -39,6 +42,7 @@ METRICS: dict[str, tuple[str, float]] = {
     "track_recall": ("higher", 0.05),
     "track_error_px": ("lower", 1.5),
     "landing_error": ("lower", 0.02),
+    "tracer_error": ("lower", 0.005),
     "confidence_separation": ("higher", 0.1),
     "review_rate": ("higher", 0.1),
 }
@@ -73,6 +77,11 @@ def evaluate_clip(video: Path, labels: dict[str, Any], pipeline: str = "v2") -> 
     if r.tracer is not None and landing:
         lx, ly = r.tracer["path"]["landing"]
         out["landing_error"] = math.hypot((lx - landing["x"]) * W, (ly - landing["y"]) * H) / H
+    # What the viewer sees: is the drawn tracer head on the ball while the ball is visible?
+    heads = [(head_at(r.tracer, f / fps), q) for f, q in track.items()] if r.tracer is not None else []
+    head_errs = [math.hypot((hd[0] - q["x"]) * W, (hd[1] - q["y"]) * H) / H for hd, q in heads if hd is not None]
+    if head_errs:
+        out["tracer_error"] = sum(head_errs) / len(head_errs)
     # "Good" judges the result the user gets (the tracer), not how much of the flight was
     # tracked: a short but accurate track that yields a correct tracer is a good clip.
     out["good"] = bool(
@@ -102,6 +111,7 @@ def summarize(results: dict[str, dict[str, Any]]) -> dict[str, float]:
         "track_recall": sum(r["track_matched"] for r in rs) / max(labelled, 1),
         "track_error_px": mean([r["track_error_px"] for r in rs if "track_error_px" in r]),
         "landing_error": mean([r["landing_error"] for r in rs if "landing_error" in r]),
+        "tracer_error": mean([r["tracer_error"] for r in rs if "tracer_error" in r]),
         # Calibration: good clips should score higher than bad ones (1.0 when there are no bad clips).
         "confidence_separation": (mean(good) - mean(bad)) if good and bad else 1.0,
         "review_rate": sum(1 for r in rs if r["route"] != "needs_input") / n,
@@ -172,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
         "--pipeline",
         choices=["v1", "v2"],
         default="v2",
-        help="v1: milestone-4 tracker (image-space fit, no stabilization); v2: current",
+        help="v1: image-space fit only, no stabilization; v2: current",
     )
     args = ap.parse_args(argv)
 
@@ -191,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
             f"addr={'ok' if res['address_ok'] else 'MISS'} "
             f"impact_err={res.get('impact_error_frames', float('nan')):.1f} "
             f"track={res['track_matched']}/{res['track_labelled']} err={res.get('track_error_px', float('nan')):.1f}px "
-            f"landing={res.get('landing_error', float('nan')):.3f}",
+            f"landing={res.get('landing_error', float('nan')):.3f} tracer={res.get('tracer_error', float('nan')):.3f}",
             file=sys.stderr,
         )
     summary = summarize(results)

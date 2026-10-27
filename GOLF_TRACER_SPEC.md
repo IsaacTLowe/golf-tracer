@@ -261,13 +261,14 @@ Field rules:
 - `style.width` is a fraction of frame height so the line scales with resolution. `taper` is the end width as a fraction of the start width. `glow` is 0–1 (blur radius and opacity of an underlay stroke). `persist_s` is how long the full tracer stays after landing; `null` means until the end.
 - `observed` and `fit` are diagnostic only. Renderers never read them.
 
-Curve and timing math (`t_i`, `t_a`, `t_l` = impact, apex and landing times; `p_a`, `p_d` = `ascent_ease` and `descent_ease`):
+Curve and timing math (`t_i`, `t_a`, `t_l` = impact, apex and landing times; `p_a`, `p_d` = `ascent_ease` and `descent_ease`; `k` = `ascent_depth_ratio`, optional, default 1):
 
 ```
 B(u; P0, C, P1) = (1-u)^2 * P0  +  2(1-u)u * C  +  u^2 * P1,     u in [0, 1]
 
 Ascent,  t_i <= t <= t_a:   tau = (t - t_i) / (t_a - t_i)
-                            u   = 1 - (1 - tau)^p_a
+                            r   = tau / (tau + k * (1 - tau))
+                            u   = 1 - (1 - r)^p_a
                             head = B(u; start, c1, apex)
 
 Descent, t_a <  t <= t_l:   tau = (t - t_a) / (t_l - t_a)
@@ -275,7 +276,9 @@ Descent, t_a <  t <= t_l:   tau = (t - t_a) / (t_l - t_a)
                             head = B(u; apex, c2, landing)
 ```
 
-With both eases above 1, the ball decelerates into the apex and hangs there before descending, which matches how a ball moving away from a down-the-line camera looks.
+With both eases above 1, the ball decelerates into the apex and hangs there before descending.
+
+`ascent_depth_ratio` (0 < k ≤ 1) is the ball's distance from the camera at impact divided by its distance at the apex. A ball flying away from a down-the-line camera moves fast on screen off the club and then slows sharply, because it is receding. `k` below 1 warps ascent time that way; `k = 1` gives `r = tau`, the plain power ease. Auto tracers fit both values. An ease near 0.5 cancels the Bézier's own slow-down toward the apex, so the screen height follows the receding ball closely.
 
 Drawing rules at video time t: before impact, draw nothing; from impact to landing, draw the path from `start` up to the head; after landing, draw the full path until `persist_s` runs out, then fade over 0.3 s. Renderers sample each segment at 200 evenly spaced `u` values, convert to pixels by multiplying by the frame's width and height, and stroke the polyline with width interpolated linearly from `width` to `width × taper` along the path.
 

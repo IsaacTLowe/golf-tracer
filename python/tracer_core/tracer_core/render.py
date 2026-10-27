@@ -37,21 +37,15 @@ def render_video(src: Path, dst: Path, tracer: dict[str, Any], *, watermark: str
     original audio muxed back in. Returns timing stats."""
     started = time.perf_counter()
     probe = media.probe(src)
-    cap = cv2.VideoCapture(str(src))
-    if not cap.isOpened():
-        raise media.MediaError("unreadable", "Could not decode the normalized video.", retryable=True)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    width, height = probe.width, probe.height
     fps = probe.nominal_fps
     enc = media.encoder_process(dst, width, height, probe.nominal_fps_str, src if probe.has_audio else None)
     assert enc.stdin is not None
     rast = Rasterizer(tracer, width, height)
     frames = 0
+    decoded = media.decode_frames(src, width, height)
     try:
-        while True:
-            ok, frame = cap.read()
-            if not ok:
-                break
+        for frame in decoded:
             out = rast.draw(frame, frames / fps)
             if watermark:
                 out = _watermark(out if out is not frame else frame.copy(), watermark)
@@ -60,7 +54,7 @@ def render_video(src: Path, dst: Path, tracer: dict[str, Any], *, watermark: str
     except BrokenPipeError:
         pass
     finally:
-        cap.release()
+        decoded.close()
         with contextlib.suppress(BrokenPipeError):
             enc.stdin.close()
     stderr = enc.stderr.read().decode(errors="replace") if enc.stderr else ""

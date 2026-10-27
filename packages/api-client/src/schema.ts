@@ -650,6 +650,11 @@ export interface components {
         };
         /** TracerTiming */
         TracerTiming: {
+            /**
+             * Ascent Depth Ratio
+             * @default 1
+             */
+            ascent_depth_ratio: number;
             /** Ascent Ease */
             ascent_ease: number;
             /** Descent Ease */

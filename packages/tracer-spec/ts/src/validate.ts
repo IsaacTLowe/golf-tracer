@@ -71,9 +71,10 @@ export function validateSchema(doc: Json): string[] {
   const timing = doc.timing;
   if (!isObj(timing)) errors.push("timing: must be an object");
   else {
-    checkKeys(errors, "timing", timing, ["ascent_ease", "descent_ease"]);
+    checkKeys(errors, "timing", timing, ["ascent_ease", "descent_ease"], ["ascent_depth_ratio"]);
     checkRange(errors, "timing/ascent_ease", timing.ascent_ease, 0.1, 20);
     checkRange(errors, "timing/descent_ease", timing.descent_ease, 0.1, 20);
+    if ("ascent_depth_ratio" in timing) checkRange(errors, "timing/ascent_depth_ratio", timing.ascent_depth_ratio, 0, 1, true);
   }
 
   errors.push(...validateStyle(doc.style));

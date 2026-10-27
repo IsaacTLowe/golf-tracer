@@ -69,6 +69,12 @@ STRAIGHT: dict[str, Any] = {
     "style": {"color": "#FFFFFF", "width": 0.004, "taper": 0.0, "glow": 1.0, "persist_s": 0.0},
 }
 
+# Perspective-warped ascent, as the auto tracer fits it for a ball flying away from the camera.
+PERSPECTIVE: dict[str, Any] = {
+    **copy.deepcopy(EXAMPLE),
+    "timing": {"ascent_ease": 0.5, "descent_ease": 1.3, "ascent_depth_ratio": 0.05},
+}
+
 
 def times_for(t: dict[str, Any]) -> list[float]:
     ti, ta, tl = t["impact_time_s"], t["apex_time_s"], t["landing_time_s"]
@@ -114,12 +120,15 @@ def invalid_cases() -> list[dict[str, Any]]:
         variant("missing_timing", lambda b: b.pop("timing")),
         variant("wrong_schema_version", lambda b: b.__setitem__("schema_version", 2)),
         variant("extra_property", lambda b: b.__setitem__("bogus", 1)),
+        variant("depth_ratio_zero", lambda b: b["timing"].__setitem__("ascent_depth_ratio", 0.0)),
+        variant("depth_ratio_above_one", lambda b: b["timing"].__setitem__("ascent_depth_ratio", 1.5)),
     ]
 
 
 def main() -> None:
     cases = []
-    for name, tracer in (("example", EXAMPLE), ("landscape", LANDSCAPE), ("straight", STRAIGHT)):
+    named = (("example", EXAMPLE), ("landscape", LANDSCAPE), ("straight", STRAIGHT), ("perspective", PERSPECTIVE))
+    for name, tracer in named:
         assert not validate(tracer), (name, validate(tracer))
         full = sample_path(tracer)
         cases.append(

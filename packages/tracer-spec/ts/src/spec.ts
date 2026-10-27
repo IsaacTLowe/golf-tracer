@@ -32,6 +32,8 @@ export interface TracerPath {
 export interface TracerTiming {
   ascent_ease: number;
   descent_ease: number;
+  /** Ball-to-camera distance at impact ÷ at the apex; below 1 warps ascent time like perspective. Default 1. */
+  ascent_depth_ratio?: number;
 }
 
 export interface TracerStyle {
@@ -106,7 +108,8 @@ export function headParam(tracer: Tracer, t: number): [0 | 1, number] | null {
   if (t < ti) return null;
   if (t <= ta) {
     const tau = (t - ti) / (ta - ti);
-    return [0, 1.0 - Math.pow(1.0 - tau, tracer.timing.ascent_ease)];
+    const r = tau / (tau + (tracer.timing.ascent_depth_ratio ?? 1.0) * (1.0 - tau));
+    return [0, 1.0 - Math.pow(1.0 - r, tracer.timing.ascent_ease)];
   }
   if (t <= tl) {
     const tau = (t - ta) / (tl - ta);

@@ -1,10 +1,10 @@
 """Image-space trajectory fit (method ``image_v1``).
 
-Fits the tracer's ascent segment directly to the tracked points: with the ascent ease p,
-the head's y follows ``y(τ) = s_y + Δ·(1 − (1 − τ)^(2p))``; p (the ascent ease) is fitted
-and x follows the Bézier through
-c1, so the early rise and its deceleration pin down the apex height and time when enough
-of the flight is visible. Weak priors (typical flight time, horizon) carry the rest. The
+Fits the tracer's ascent segment directly to the tracked points: with the perspective-warped
+time ``r = τ / (τ + k·(1 − τ))`` and the ascent ease p, the head's y follows
+``y = s_y + Δ·(1 − (1 − r)^(2p))``; p and the depth ratio k are fitted and x follows the
+Bézier through c1, so the early rise and its deceleration pin down the apex height and time
+when enough of the flight is visible. Weak priors (typical flight time, horizon) carry the rest. The
 descent isn't usually visible, so the landing goes just below the estimated horizon,
 continuing the observed lateral drift.
 """
@@ -16,11 +16,13 @@ from typing import Any
 
 import numpy as np
 from scipy.optimize import least_squares
+from tracer_spec import ascent_u
 
 from ..model import C2_FRACTION, DEFAULT_FLIGHT_S, build_tracer, default_landing_y
 
-MIN_EASE = 1.0
-MAX_EASE = 20.0  # schema maximum; seen from behind, the ball's screen height saturates fast
+MIN_EASE = 0.2
+MAX_EASE = 20.0  # schema maximum
+DEPTH_RATIO_MIN = 0.005
 DESCENT_EASE = 1.3
 IMPACT_SLACK_FRAMES = 1.5
 TIMING_WEIGHT = 0.15
@@ -39,14 +41,16 @@ class FitResult:
     n_points: int
 
 
-def _ascent(theta: np.ndarray, start: np.ndarray, tau: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    dy, _ta, ax, c1x, ease = theta[:5]
-    tau = np.clip(tau, 0.0, 1.0)
-    u = 1.0 - (1.0 - tau) ** ease
+def _path(theta: np.ndarray, start: np.ndarray, u: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    dy, _ta, ax, c1x = theta[:4]
     ay = start[1] + dy
     x = (1 - u) ** 2 * start[0] + 2 * (1 - u) * u * c1x + u**2 * ax
     y = (1 - u) ** 2 * start[1] + 2 * (1 - u) * u * ay + u**2 * ay
     return x, y
+
+
+def _ascent(theta: np.ndarray, start: np.ndarray, tau: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    return _path(theta, start, ascent_u(np.clip(tau, 0.0, 1.0), theta[4], theta[6]))
 
 
 def fit_image_v1(
@@ -73,10 +77,9 @@ def fit_image_v1(
         tau = (t_rel - theta[5]) / theta[1]
         x, y = _ascent(theta, s, tau)
         # Path residual: distance from each observation to the nearest point on the curve.
-        # Timing residual (down-weighted): where the head is at each observation's time.
-        # The spec's power ease can't follow perspective timing exactly, but the line itself
-        # must follow the ball.
-        cx, cy = _ascent(theta, s, 1.0 - (1.0 - u_dense) ** (1.0 / theta[4]))
+        # Timing residual (down-weighted): where the head is at each observation's time. The
+        # line itself must follow the ball; timing is pinned down less well by early flight.
+        cx, cy = _path(theta, s, u_dense)
         dx = (cx[None, :] - obs[:, 1:2]) * W
         dy_ = (cy[None, :] - obs[:, 2:3]) * H
         nearest = np.argmin(dx * dx + dy_ * dy_, axis=1)
@@ -101,16 +104,16 @@ def fit_image_v1(
     # one-frame impact error, which otherwise dominates the fit (the ball moves fastest then).
     fps = float(video["fps"])
     slack = IMPACT_SLACK_FRAMES / fps
-    lo = np.array([-(s[1] - 0.01), 0.25, 0.0, 0.0, MIN_EASE, -slack])
-    hi = np.array([-(s[1] - top_obs) * 0.98 + 1e-3 if top_obs < s[1] else -0.01, 8.0, 1.0, 1.0, MAX_EASE, slack])
+    lo = np.array([-(s[1] - 0.01), 0.25, 0.0, 0.0, MIN_EASE, -slack, DEPTH_RATIO_MIN])
+    hi = np.array([-(s[1] - top_obs) * 0.98 + 1e-3 if top_obs < s[1] else -0.01, 8.0, 1.0, 1.0, MAX_EASE, slack, 1.0])
     hi[0] = max(hi[0], lo[0] + 1e-3)
     best = None
     lat = float(obs[-1, 1] - s[0])
-    for ta0, ease0 in ((1.5, 3.0), (2.5, 6.0), (2.5, 12.0), (3.5, 8.0)):
+    for ta0, ease0, depth0 in ((1.5, 0.5, 0.05), (2.5, 0.5, 0.1), (2.5, 6.0, 1.0), (3.5, 8.0, 1.0)):
         for frac in (1.05, 1.4):
             dy0 = float(np.clip((top_obs - s[1]) * frac, lo[0] + 1e-3, hi[0] - 1e-3))
             x0 = np.array(
-                [dy0, ta0, float(np.clip(s[0] + lat * 1.2, 0, 1)), float(np.clip(s[0] + lat * 0.3, 0, 1)), ease0, 0.0]
+                [dy0, ta0, np.clip(s[0] + lat * 1.2, 0, 1), np.clip(s[0] + lat * 0.3, 0, 1), ease0, 0.0, depth0]
             )
             x0 = np.clip(x0, lo + 1e-6, hi - 1e-6)
             try:
@@ -121,7 +124,7 @@ def fit_image_v1(
                 best = res
     if best is None:
         return None
-    dy, ta, ax, c1x, ease, dt0 = (float(v) for v in best.x)
+    dy, ta, ax, c1x, ease, dt0, depth_ratio = (float(v) for v in best.x)
     impact_time_s = max(0.0, impact_time_s + dt0)
     n = len(obs)
     res = best.fun
@@ -147,7 +150,11 @@ def fit_image_v1(
         style=style,
         apex_time_s=apex_t,
         landing_time_s=landing_t,
-        timing={"ascent_ease": round(ease, 4), "descent_ease": DESCENT_EASE},
+        timing={
+            "ascent_ease": round(ease, 4),
+            "descent_ease": DESCENT_EASE,
+            "ascent_depth_ratio": round(depth_ratio, 4),
+        },
         observed=observed_doc,
         fit={"method": "image_v1", "residual_px": round(residual_px, 3), "timing_residual_px": round(timing_px, 3)},
     )
