@@ -6,12 +6,13 @@
     "address_detection_rate": 1.0,
     "impact_within_2_frames": 1.0,
     "impact_error_frames": 0.8,
-    "track_recall": 0.5076023391812865,
-    "track_error_px": 5.565013766559995,
-    "landing_error": 0.03803114412818168,
-    "confidence_separation": 0.13124999999999998,
+    "track_recall": 0.6713450292397661,
+    "track_error_px": 1.920254284347521,
+    "landing_error": 0.017603720693105496,
+    "tracer_error": 0.003084228310264674,
+    "confidence_separation": 1.0,
     "review_rate": 1.0,
-    "check_rate": 0.2,
+    "check_rate": 0.0,
     "needs_input_rate": 0.0
   },
   "tolerance": {
@@ -21,6 +22,7 @@
     "track_recall": 0.05,
     "track_error_px": 1.5,
     "landing_error": 0.02,
+    "tracer_error": 0.005,
     "confidence_separation": 0.1,
     "review_rate": 0.1
   }

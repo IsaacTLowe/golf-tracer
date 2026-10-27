@@ -46,7 +46,8 @@ Choices made where the spec was silent, plus the open-question defaults. Newest 
   - All five path points are in 0..1.
   - `style.width` ≤ 0.05, `color` is `#RRGGBB`, `persist_s` ≥ 0 or null.
   - `apex` must also be the highest point (start and landing y ≥ apex y).
-- **`timing.*_ease` maximum is 20 (raised from an initial 10 before milestone 3 shipped).** Seen from behind, a ball's screen height saturates very quickly, and the fitted ascent ease is often 10–20.
+- **`timing.*_ease` maximum is 20 (raised from an initial 10 before milestone 3 shipped).** Seen from behind, a ball's screen height saturates very quickly, and the fitted ascent ease was often 10–20 before `ascent_depth_ratio` existed.
+- **`timing.ascent_depth_ratio`** (optional, 0 < k ≤ 1, default 1) warps ascent time like perspective; see the spec's timing math. It was added without bumping `schema_version`: it is optional, and its default reproduces every existing tracer, so stored v1 documents stay valid and unchanged. The API fills in 1 when a client omits it. Manual tracers keep the default (no warp), because their apex time is a guess rather than a measurement.
 - **Manual tracer model** (`tracer_core.model`):
   - Default flight 5 s, clipped to the clip end.
   - Apex time at 40% of the flight.
@@ -68,11 +69,14 @@ Choices made where the spec was silent, plus the open-question defaults. Newest 
   - User hints override both.
 - **Tracking:**
   - Candidates come from three-frame differencing, with large movers (golfer, shaft) and their surroundings masked out.
+  - Each candidate is its **centroid**, not the streak's leading end the spec suggests. For a blurred streak the centroid is the ball at mid-exposure; mixing leading ends (long streaks) with centroids (short ones) made tracks jitter by half a streak, which broke the predictor and biased the fits.
+  - On handheld clips, candidates are mapped into the frame just before impact by chaining the per-frame camera-motion transforms, so shake doesn't jitter the track.
   - Seeds are pairs of early candidates that leave the ball upward on a consistent heading without accelerating.
-  - Each seed is extended with a quadratic (constant-acceleration) predictor and a growing gate. Tracking stops after 5 misses.
+  - Each seed is extended with a **perspective predictor**: over a short window the ball's 3D velocity is about constant, so a pinhole camera sees `x = (a0 + a1·t) / (1 + c·t)` and the same form for `y`. It is solved by linear least squares over the last 12 points, with a polynomial fallback for fewer than 4 points or `c < 0`. A quadratic can't follow the sharp slow-down of a ball flying away from the camera and predicts it turning back. A gravity term was tried and dropped: on a few noisy points it predicts the ball stopping and falling.
+  - Gate: 3 px + 0.5 × the predicted move since the last hit, × (1 + 0.5 × misses). Tracking stops after 5 misses.
 - **image_v1 fit:**
-  - Minimizes the distance from tracked points to the curve (path). Timing residuals are weighted 0.15, because the spec's power ease can't follow perspective timing exactly.
-  - Fits the ascent ease and a start-time offset of ±1.5 frames.
+  - Minimizes the distance from tracked points to the curve (path). Timing residuals are weighted 0.15: early flight pins timing down less well than the path.
+  - Fits the ascent ease, `ascent_depth_ratio` and a start-time offset of ±1.5 frames.
   - Weak priors: apex time at 32% of a 5 s flight, apex above the horizon.
   - Landing goes just below the horizon, continuing 35% of the lateral drift, with descent lasting 2.1× the ascent.
 - **Confidence:** 0.2 · address + 0.2 · impact agreement + 0.35 · track coverage × track plausibility + 0.25 · exp(−residual / 6 px).
@@ -93,7 +97,7 @@ Choices made where the spec was silent, plus the open-question defaults. Newest 
   - **Fitting:** least squares on pixel residuals with weak priors, then the spec's curve and eases are fitted to the projected trajectory.
   - **Selection:** used when its residual is ≤ max(6 px, 2 × the image fit's residual); otherwise image_v1 is kept.
 - **No learned detector:** evaluation hasn't shown that classical tracking has plateaued (synthetic recall is limited by the ball getting sub-pixel, not by the detector). Revisit with real golden clips.
-- **`auto_trace(version="v1")`** reproduces the milestone 4 pipeline for comparisons. CI gates on `datasets/golden/baseline_synthetic.json`, recorded with the current pipeline; re-record it when an improvement lands. Milestone 4 (v1) vs milestone 6 (v2) on the synthetic set:
+- **`auto_trace(version="v1")`** turns off the milestone 6 additions (stabilization, physics fit) for comparisons. It shares the current tracker, so it no longer reproduces the milestone 4 numbers below exactly. CI gates on `datasets/golden/baseline_synthetic.json`, recorded with the current pipeline; re-record it when an improvement lands. Milestone 4 (v1) vs milestone 6 (v2) on the synthetic set:
 
   | Metric | v1 | v2 |
   | --- | --- | --- |
@@ -106,11 +110,29 @@ Choices made where the spec was silent, plus the open-question defaults. Newest 
   | Routed to review | 1.00 | 1.00 |
 - **Calibration metric:** a clip counts as "good" when the ball was found, impact is within 2 frames and the tracer's landing is within 0.06 of frame height. Judging by track recall instead marked accurate short tracks as failures.
 
+## Tracker accuracy pass (October 2026)
+
+Centroid candidates, shake-free reference coordinates, the perspective predictor and the new gate (see **Tracking** above). On the synthetic set, run on macOS arm64, where the baseline was re-recorded:
+
+| Metric | Before | After |
+| --- | --- | --- |
+| Track recall | 0.50 | 0.67 |
+| Track error (px) | 6.0 | 1.9 |
+| Landing error (frame height) | 0.032 | 0.018 |
+| Tracer error (frame height) | 0.032 | 0.028, then 0.003 with `ascent_depth_ratio` |
+| Routed to review without the check badge | 0.8 | 1.0 |
+
+- **Before**, the two handheld clips lost the ball within 0.2 s or jumped to the club head 40–150 px away, although the detector saw the ball in nearly every frame. Association was the problem, not detection.
+- **Gate size:** 0.4 and 0.5 × the predicted move give the same results; 0.3 loses whole tracks at 30 fps, where the first predictions come from only 2–3 points. 0.5 keeps a margin for real footage.
+- **Tracer error** (new eval metric) is the mean distance between the drawn tracer head and the labelled ball over the visible frames. The fitted path was already within 1–3 px of the ball; nearly all of the error was timing. The power ease alone can't follow perspective timing: even a free fit of apex time and ease to the true track leaves about 45 px RMS on a 1920 px-tall frame. Both fits now also fit `ascent_depth_ratio` (see **Tracer spec**), with the ease settling near 0.5, and the head stays on the ball: tracer error 0.028 → 0.003, about 6 px at 1920 px tall. The physics fit takes apex time from the simulated flight; letting it float as well gained little.
+- **Not done:** the remaining recall gap is the ball going sub-pixel at detection scale (long edge 960). Tracking at full resolution or a low-threshold search inside the gate would extend tracks, but feeding the fit perfect full-length tracks only improves landing error from 0.018 to 0.014. Revisit with real golden clips.
+
 ## Rendering
 
 - **Frame timing:** frame `i` of the normalized (CFR) video is drawn at `t = i / fps`, which matches `requestVideoFrameCallback` `mediaTime`.
 - **Rendering is incremental:** the fixed part of the line is stamped once and the finished masks are cached after landing. Output is identical to the stateless reference.
 - **Watermark** (`WATERMARK=1`, off by default): "Traced with {APP_NAME}", bottom right.
+- **Decoding for export:** ffmpeg decodes to YUV and OpenCV converts to BGR (`media.decode_frames`). OpenCV's conversion is bit-exact across CPUs; swscale's ARM path (in both OpenCV's bundled FFmpeg and Debian's) shifts colours by about 3 levels, which failed the render test on Apple Silicon and would tint exports made on ARM hosts.
 
 ## Mobile readiness
 

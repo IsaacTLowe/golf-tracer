@@ -77,8 +77,8 @@ def auto_trace(
     debug_out: Path | None = None,
     version: str = "v2",
 ) -> TraceResult:
-    """Trace one clip. ``version="v1"`` reproduces the milestone-4 pipeline (no camera-motion
-    compensation, image-space fit only) for comparisons and as a fallback."""
+    """Trace one clip. ``version="v1"`` turns off the milestone-6 additions (camera-motion
+    compensation, physics fit) for comparisons and as a fallback."""
     v2 = version != "v1"
     hints = hints or {}
     t0 = time.perf_counter()

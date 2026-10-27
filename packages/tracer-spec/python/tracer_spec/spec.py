@@ -8,7 +8,10 @@ produce identical numbers (to 1e-6) for the shared test vectors in
 from __future__ import annotations
 
 import math
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
+
+if TYPE_CHECKING:
+    import numpy as np
 
 SCHEMA_VERSION = 1
 SAMPLES_PER_SEGMENT = 200
@@ -53,6 +56,16 @@ def sample_u(i: int) -> float:
     return i / (SAMPLES_PER_SEGMENT - 1)
 
 
+def ascent_u[N: (float, "np.ndarray")](tau: N, ease: float, depth_ratio: float = 1.0) -> N:
+    """Bézier parameter of the ascent at normalized time ``tau`` (0..1). ``depth_ratio`` is the
+    ball's distance from the camera at impact divided by its distance at the apex: below 1 it
+    warps time the way perspective does (fast off the club, slow near the apex); 1 = no warp.
+    Also runs vectorized on NumPy arrays in the fits."""
+    r = tau / (tau + depth_ratio * (1.0 - tau))
+    u: N = 1.0 - (1.0 - r) ** ease  # float ** float is typed Any (it could be complex)
+    return u
+
+
 def head_param(tracer: dict[str, Any], t: float) -> tuple[int, float] | None:
     """Return (segment, u) of the ball head at time t: segment 0 = ascent, 1 = descent.
 
@@ -64,9 +77,9 @@ def head_param(tracer: dict[str, Any], t: float) -> tuple[int, float] | None:
     if t < t_i:
         return None
     if t <= t_a:
+        timing = tracer["timing"]
         tau = (t - t_i) / (t_a - t_i)
-        u = 1.0 - (1.0 - tau) ** tracer["timing"]["ascent_ease"]
-        return 0, u
+        return 0, ascent_u(tau, timing["ascent_ease"], timing.get("ascent_depth_ratio", 1.0))
     if t <= t_l:
         tau = (t - t_a) / (t_l - t_a)
         u = tau ** tracer["timing"]["descent_ease"]

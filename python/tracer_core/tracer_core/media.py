@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+from collections.abc import Generator
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -204,6 +205,25 @@ def extract_audio(src: Path, sample_rate: int = 16000) -> np.ndarray | None:
     if proc.returncode != 0 or not proc.stdout:
         return None
     return np.frombuffer(proc.stdout, dtype=np.int16).astype(np.float32) / 32768.0
+
+
+def decode_frames(src: Path, width: int, height: int) -> Generator[np.ndarray]:
+    """BGR frames of ``src`` (even dimensions). ffmpeg decodes to YUV and OpenCV converts, because
+    OpenCV's conversion is bit-exact across CPUs while swscale's ARM path shifts colours a few levels."""
+    import cv2
+
+    cmd = [ffmpeg_bin(), "-hide_banner", "-v", "error", "-i", str(src), "-map", "0:v:0",
+           "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "yuv420p", "-"]  # fmt: skip
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    assert proc.stdout is not None
+    size = width * height * 3 // 2
+    try:
+        while len(buf := proc.stdout.read(size)) == size:
+            yuv = np.frombuffer(buf, np.uint8).reshape(height * 3 // 2, width)
+            yield cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR_I420)
+    finally:
+        proc.kill()
+        proc.wait()
 
 
 def encoder_process(

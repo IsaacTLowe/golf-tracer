@@ -2,20 +2,22 @@
 
 Candidates: three-frame differencing (the object present in frame k but not in k-1 or k+1),
 filtered by size and shape, with large moving regions (the golfer) and their surroundings
-masked out. At low frame rates the ball is a streak, so each candidate also carries the two
-ends of its major axis and the association step uses the leading end.
+masked out. Each candidate is its centroid: for a motion-blurred streak that is the ball at
+mid-exposure, which keeps observations consistent from frame to frame (mixing streak ends
+with centroids made the track jitter by half a streak).
 
 Association: seed hypotheses from candidates in the first few frames that move up and away
 from the address position, score each by how many later frames it predicts with a
-constant-velocity model, then extend the best one with a constant-acceleration predictor
-(quadratic fit over the recent track) and a growing gate. The club head is the main early
-false positive; it curves sharply around the golfer, so it fails the smooth-path test.
+constant-velocity model, then extend the best one with a perspective motion model (see
+``_perspective_model``) and a gate proportional to the predicted move. The club head is the
+main early false positive; it curves sharply around the golfer, so it fails the smooth-path test.
 Tracking stops after ``MAX_MISSES`` consecutive misses or when the ball leaves the frame.
 """
 
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import cv2
@@ -24,6 +26,10 @@ import numpy as np
 MAX_MISSES = 5
 SEED_FRAMES = 4
 MAX_TRACK_S = 3.0
+PREDICT_POINTS = 12
+GATE_PX = 3.0  # association gate: this + GATE_FRACTION × the predicted move since the last hit, widened per miss
+GATE_FRACTION = 0.5
+GATE_MISS_GROWTH = 0.5
 
 
 @dataclass
@@ -31,8 +37,6 @@ class Blob:
     x: float
     y: float
     area: float
-    ends: tuple[tuple[float, float], tuple[float, float]]
-    elongation: float
     strength: float
 
 
@@ -69,38 +73,19 @@ def motion_blobs(
     else:
         bw = (motion > thr).astype(np.uint8)
     n, labels, stats, cents = cv2.connectedComponentsWithStats(bw, connectivity=8)
+    areas = stats[:, cv2.CC_STAT_AREA]
     # Mask big movers (golfer, club shaft) plus a margin around them.
-    big = np.zeros_like(bw)
-    for i in range(1, n):
-        if stats[i, cv2.CC_STAT_AREA] > golfer_area:
-            big[labels == i] = 1
+    big = np.isin(labels, np.flatnonzero(areas[1:] > golfer_area) + 1).astype(np.uint8)
     if big.any():
         big = cv2.dilate(big, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
+    sums = np.bincount(labels.ravel(), weights=motion.ravel(), minlength=n)
     out: list[Blob] = []
     for i in range(1, n):
-        area = float(stats[i, cv2.CC_STAT_AREA])
-        if area < 1 or area > max_area:
-            continue
+        area = float(areas[i])
         cx, cy = float(cents[i][0]), float(cents[i][1])
-        if big[int(cy), int(cx)]:
+        if area > max_area or big[int(cy), int(cx)]:
             continue
-        ys, xs = np.nonzero(labels == i)
-        strength = float(motion[ys, xs].mean())
-        if len(xs) >= 3:
-            pts = np.stack([xs, ys], axis=1).astype(np.float64)
-            mean = pts.mean(axis=0)
-            cov = np.cov((pts - mean).T)
-            evals, evecs = np.linalg.eigh(cov)
-            major = evecs[:, -1]
-            proj = (pts - mean) @ major
-            e1 = mean + major * proj.min()
-            e2 = mean + major * proj.max()
-            elong = float(np.sqrt(max(evals[-1], 1e-6) / max(evals[0], 0.25)))
-            ends = ((float(e1[0]), float(e1[1])), (float(e2[0]), float(e2[1])))
-        else:
-            ends = ((cx, cy), (cx, cy))
-            elong = 1.0
-        out.append(Blob(cx, cy, area, ends, elong, strength))
+        out.append(Blob(cx, cy, area, float(sums[i]) / area))
     return out
 
 
@@ -139,6 +124,16 @@ def frame_motion(frames: list[np.ndarray], first: int) -> list[np.ndarray]:
     return motion
 
 
+def reference_transforms(motion: list[np.ndarray], ref: int) -> list[np.ndarray]:
+    """2x3 transforms taking frame k's pixels to frame ``ref``'s, chaining ``motion`` (k-1 → k)."""
+    out: list[np.ndarray] = [IDENTITY.copy() for _ in motion]
+    acc = np.eye(3)
+    for k in range(ref + 1, len(motion)):
+        acc = acc @ np.linalg.inv(np.vstack([motion[k], [0.0, 0.0, 1.0]]))
+        out[k] = acc[:2]
+    return out
+
+
 def align(frame: np.ndarray, m: np.ndarray, *, inverse: bool = False) -> np.ndarray:
     """Warp ``frame`` with the similarity ``m`` (or its inverse) onto its neighbour."""
     if np.allclose(m, IDENTITY):
@@ -146,14 +141,6 @@ def align(frame: np.ndarray, m: np.ndarray, *, inverse: bool = False) -> np.ndar
     mm = cv2.invertAffineTransform(m) if inverse else m
     out: np.ndarray = cv2.warpAffine(frame, mm, (frame.shape[1], frame.shape[0]), borderMode=cv2.BORDER_REPLICATE)
     return out
-
-
-def _point_for(b: Blob, direction: np.ndarray | None) -> tuple[float, float]:
-    """Leading end of a motion streak (along the direction of travel), else the centroid."""
-    if direction is None or b.elongation < 2.0:
-        return b.x, b.y
-    e1, e2 = np.array(b.ends[0]), np.array(b.ends[1])
-    return tuple(e2) if float((e2 - e1) @ direction) > 0 else tuple(e1)  # type: ignore[return-value]
 
 
 def track(
@@ -170,7 +157,11 @@ def track(
     max_area = max(60.0, (ball_r * 2.5) ** 2 * 6)
     golfer_area = max(400.0, 0.004 * w * h)
     blobs: list[list[Blob]] = [[] for _ in frames]
-    motion = frame_motion(frames, max(0, impact_k - 1)) if stabilize else [IDENTITY] * len(frames)
+    ref = max(0, impact_k - 1)
+    motion = frame_motion(frames, ref) if stabilize else [IDENTITY] * len(frames)
+    # Candidates are kept in the reference frame's coordinates so camera shake doesn't jitter
+    # the track (the predictor would read the jitter as the ball turning).
+    to_ref = reference_transforms(motion, ref)
     for k in range(max(1, impact_k), len(frames) - 1):
         prev = align(frames[k - 1], motion[k])
         nxt = align(frames[k + 1], motion[k + 1], inverse=True)
@@ -178,6 +169,9 @@ def track(
         blobs[k] = motion_blobs(
             prev, frames[k], nxt, max_area=max_area, golfer_area=golfer_area, edge_tol_px=0.6 if stabilized else 0.0
         )
+        m = to_ref[k]
+        for b in blobs[k]:
+            b.x, b.y = (float(m[0, 0] * b.x + m[0, 1] * b.y + m[0, 2]), float(m[1, 0] * b.x + m[1, 1] * b.y + m[1, 2]))
 
     s = np.array(start_xy, dtype=np.float64)
     first = impact_k + (1 if times[impact_k] <= 0 else 0)
@@ -189,7 +183,7 @@ def track(
     # frames and keep the seed that explains the most frames.
     for k1 in range(first, min(first + SEED_FRAMES, last)):
         for b1 in blobs[k1]:
-            p1 = np.array(_point_for(b1, None))
+            p1 = np.array([b1.x, b1.y])
             d1 = p1 - s
             if d1[1] > -max(1.5, 0.5 * ball_r) or abs(d1[0]) > abs(d1[1]) * 1.2:
                 continue
@@ -199,7 +193,7 @@ def track(
                 continue
             for k2 in range(k1 + 1, min(k1 + 3, last)):
                 for b2 in blobs[k2]:
-                    p2 = np.array(_point_for(b2, None))
+                    p2 = np.array([b2.x, b2.y])
                     d2 = p2 - p1
                     n2 = float(np.linalg.norm(d2))
                     if d2[1] >= 0 or n2 < 0.5:
@@ -230,12 +224,12 @@ def _extend(
     k = out[-1].k + 1
     misses = 0
     while k < stop:
-        pred, vel = _predict(out, times, k)
+        pred = _predict(out, times, k)
         if not (0 <= pred[0] < w and 0 <= pred[1] < h):
             break
-        step = float(np.linalg.norm(vel)) * (times[k] - times[out[-1].k])
-        gate = (0.5 * step + 3.0) * (1.0 + 0.5 * misses)
-        cand = _nearest(blobs[k], pred, gate, vel)
+        # The predicted move since the last hit already grows over missed frames.
+        step = float(np.hypot(pred[0] - out[-1].x, pred[1] - out[-1].y))
+        cand = _nearest(blobs[k], pred, GATE_PX + GATE_FRACTION * step * (1.0 + GATE_MISS_GROWTH * misses))
         if cand is None:
             misses += 1
             if misses >= max_misses:
@@ -247,27 +241,43 @@ def _extend(
     return out
 
 
-def _nearest(cands: list[Blob], pred: np.ndarray, gate: float, vel: np.ndarray) -> tuple[float, float, float] | None:
+def _nearest(cands: list[Blob], pred: np.ndarray, gate: float) -> tuple[float, float, float] | None:
     best = None
     best_d = gate
-    direction = vel / (float(np.linalg.norm(vel)) or 1.0)
     for b in cands:
-        x, y = _point_for(b, direction)
-        d = float(np.hypot(x - pred[0], y - pred[1]))
+        d = float(np.hypot(b.x - pred[0], b.y - pred[1]))
         if d < best_d:
-            best, best_d = (x, y, b.strength), d
+            best, best_d = (b.x, b.y, b.strength), d
     return best
 
 
-def _predict(pts: list[TrackPoint], times: list[float], k: int) -> tuple[np.ndarray, np.ndarray]:
-    recent = pts[-8:]
+def _predict(pts: list[TrackPoint], times: list[float], k: int) -> np.ndarray:
+    recent = pts[-PREDICT_POINTS:]
     ts = np.array([times[p.k] for p in recent])
     xs = np.array([p.x for p in recent])
     ys = np.array([p.y for p in recent])
+    model = (_perspective_model(ts, xs, ys) if len(ts) >= 4 else None) or _poly_model(ts, xs, ys)
+    return model(times[k])
+
+
+def _poly_model(ts: np.ndarray, xs: np.ndarray, ys: np.ndarray) -> Callable[[float], np.ndarray]:
     deg = 2 if len(ts) >= 4 else 1
-    cx = np.polyfit(ts, xs, deg)
-    cy = np.polyfit(ts, ys, deg)
-    t = times[k]
-    pred = np.array([np.polyval(cx, t), np.polyval(cy, t)])
-    vel = np.array([np.polyval(np.polyder(cx), t), np.polyval(np.polyder(cy), t)])
-    return pred, vel
+    cx, cy = np.polyfit(ts, xs, deg), np.polyfit(ts, ys, deg)
+    return lambda t: np.array([np.polyval(cx, t), np.polyval(cy, t)])
+
+
+def _perspective_model(ts: np.ndarray, xs: np.ndarray, ys: np.ndarray) -> Callable[[float], np.ndarray] | None:
+    """Screen motion of a ball flying away from the camera. Over a short window its 3D velocity
+    is about constant, and a pinhole camera then sees x = (a0 + a1·t) / (1 + c·t) and
+    y = (b0 + b1·t) / (1 + c·t). A polynomial can't follow the sharp perspective slow-down and
+    overshoots into a turn-back; this model is monotone, so it never predicts one. (A gravity
+    term was tried: on a few noisy points it predicts the ball stopping and falling.)
+    Solved linearly via x·(1 + c·t) = a0 + a1·t; None unless c ≥ 0 (receding)."""
+    n = len(ts)
+    zero, one = np.zeros(n), np.ones(n)
+    x_rows = np.column_stack([one, ts, zero, zero, -ts * xs])
+    y_rows = np.column_stack([zero, zero, one, ts, -ts * ys])
+    a0, a1, b0, b1, c = np.linalg.lstsq(np.vstack([x_rows, y_rows]), np.concatenate([xs, ys]), rcond=None)[0]
+    if c < 0:
+        return None
+    return lambda t: np.array([a0 + a1 * t, b0 + b1 * t]) / (1 + c * t)

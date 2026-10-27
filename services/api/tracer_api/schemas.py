@@ -39,6 +39,7 @@ class TracerTiming(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ascent_ease: float = Field(ge=0.1, le=20)
     descent_ease: float = Field(ge=0.1, le=20)
+    ascent_depth_ratio: float = Field(default=1.0, gt=0, le=1)
 
 
 class TracerStyle(BaseModel):

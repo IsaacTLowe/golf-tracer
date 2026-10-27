@@ -21,6 +21,7 @@ from typing import Any
 
 import numpy as np
 from scipy.optimize import least_squares, minimize_scalar
+from tracer_spec import ascent_u
 
 from ..model import build_tracer
 
@@ -31,6 +32,8 @@ DT = 0.01
 MAX_FLIGHT_S = 12.0
 F_PRIOR = 0.8  # focal length / long edge (phone main camera, ~65 deg across the long edge)
 IMPACT_SLACK_FRAMES = 1.5
+ASCENT_EASE_MIN = 0.2
+DEPTH_RATIO_MIN = 0.005
 
 
 @dataclass
@@ -239,22 +242,29 @@ def _to_tracer(
     c1x = float(minimize_scalar(lambda c: shape_cost(c, start, apex, asc), bounds=(0, 1), method="bounded").x)
     c2x = float(minimize_scalar(lambda c: shape_cost(c, apex, land, desc), bounds=(0, 1), method="bounded").x)
 
-    # Eases: match where the head is over time.
-    def ease_cost(p: float, seg_t: np.ndarray, seg_y: np.ndarray, y0: float, y1: float, ascent: bool) -> float:
-        tau = (seg_t - seg_t[0]) / (seg_t[-1] - seg_t[0])
-        u = 1 - (1 - tau) ** p if ascent else tau**p
-        # y along a Bézier whose control shares the apex y is monotone in u
-        y = (1 - u) ** 2 * y0 + 2 * (1 - u) * u * (apex[1]) + u**2 * y1
-        return float(((y - seg_y) ** 2).mean())
+    # Timing: match where the head is over time. y along a Bézier whose control shares the
+    # apex y is monotone in u.
+    def bezier_y(u: np.ndarray, y0: float, y1: float) -> np.ndarray:
+        out: np.ndarray = (1 - u) ** 2 * y0 + 2 * (1 - u) * u * apex[1] + u**2 * y1
+        return out
 
-    def asc_cost(p: float) -> float:
-        return ease_cost(p, ts[: ia + 1], ys[: ia + 1], start[1], apex[1], True)
-
-    def desc_cost(p: float) -> float:
-        return ease_cost(p, ts[ia:], ys[ia:], apex[1], land[1], False)
-
-    pa = float(minimize_scalar(asc_cost, bounds=(1.0, 20.0), method="bounded").x)
-    pd = float(minimize_scalar(desc_cost, bounds=(0.3, 20.0), method="bounded").x)
+    # Ascent: ease and perspective depth ratio together; seen from behind, an ease near 0.5
+    # cancels the Bézier's own slow-down and the depth ratio supplies the perspective timing.
+    tau_a = ts[: ia + 1] / ts[ia]
+    asc = least_squares(
+        lambda th: bezier_y(ascent_u(tau_a, th[0], th[1]), start[1], apex[1]) - ys[: ia + 1],
+        [0.5, 0.1],
+        bounds=([ASCENT_EASE_MIN, DEPTH_RATIO_MIN], [20.0, 1.0]),
+    )
+    pa, depth_ratio = (float(v) for v in asc.x)
+    tau_d = (ts[ia:] - ts[ia]) / (ts[-1] - ts[ia])
+    pd = float(
+        minimize_scalar(
+            lambda p: float(((bezier_y(tau_d**p, apex[1], land[1]) - ys[ia:]) ** 2).mean()),
+            bounds=(0.3, 20.0),
+            method="bounded",
+        ).x
+    )
     doc = build_tracer(
         video=video,
         impact_time_s=impact,
@@ -264,7 +274,7 @@ def _to_tracer(
         style=style,
         apex_time_s=impact + t_a,
         landing_time_s=min(impact + t_l, dur),
-        timing={"ascent_ease": round(pa, 4), "descent_ease": round(pd, 4)},
+        timing={"ascent_ease": round(pa, 4), "descent_ease": round(pd, 4), "ascent_depth_ratio": round(depth_ratio, 4)},
     )
     doc["path"]["c1"] = [c1x, doc["path"]["apex"][1]]
     doc["path"]["c2"] = [c2x, doc["path"]["apex"][1]]
